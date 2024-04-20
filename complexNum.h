@@ -56,6 +56,49 @@ struct Complex {
         */
         return Complex(c.real + real, c.imag);
     }
+    
+    Complex operator+=(const Complex& other) {
+        /**
+         * Addition assignment of two complex numbers
+         * 
+         * defined as:
+         * (a + bi) += (c + di) => (a + c) + (b + d)i
+         *
+         * @param other: Complex number to add
+         * @return: Sum of the two complex numbers
+        */
+        real += other.real;
+        imag += other.imag;
+        return *this;
+    }
+
+    friend Complex operator+=(T real, const Complex& c) {
+        /**
+         * Addition assignment of a real number and a complex number
+         * 
+         * defined as:
+         * a += (b + ci) => (a + b) + ci
+         *
+         * @param real: Real number to add
+         * @param c: Complex number to add
+         * @return: Sum of the real and complex numbers
+        */
+        return Complex(real + c.real, c.imag);
+    }
+
+    friend Complex operator+=(const Complex& c, T real) {
+        /**
+         * Addition assignment of a complex number and a real number
+         * 
+         * defined as:
+         * (a + bi) += c => (a + c) + bi
+         *
+         * @param c: Complex number to add
+         * @param real: Real number to add
+         * @return: Sum of the complex and real numbers
+        */
+        return Complex(c.real + real, c.imag);
+    }
 
     Complex operator-(const Complex& other) const {
         /**
@@ -218,6 +261,46 @@ struct Complex {
         */
         T expReal = std::exp(real);
         return Complex(expReal * std::cos(imag), expReal * std::sin(imag));
+    }
+
+    Complex<T> pow(T exponent) const {
+        T magnitude = std::sqrt(real * real + imag * imag);
+        T angle = std::atan2(imag, real);
+        T mag_pow = std::pow(magnitude, exponent);
+        T new_angle = angle * exponent;
+        return Complex<T>(mag_pow * std::cos(new_angle), mag_pow * std::sin(new_angle));
+    }
+
+    Complex sqrt() const {
+        /**
+         * Square root of a complex number
+         * 
+         * defined as:
+         * sqrt(a + bi) = sqrt((a + sqrt(a^2 + b^2)) / 2) + sign(b) * sqrt((-a + sqrt(a^2 + b^2)) / 2)i
+         *
+         * @return: Square root of the complex number
+        */
+        T magnitude = std::sqrt(real * real + imag * imag);
+        T real = std::sqrt((magnitude + real) / 2);
+        T imag = std::sqrt((magnitude - real) / 2);
+        if (imag < 0) {
+            imag = -imag;
+        }
+        return Complex(real, imag);
+    }
+
+    Complex log() const {
+        /**
+         * Natural logarithm of a complex number
+         * 
+         * defined as:
+         * log(a + bi) = log(sqrt(a^2 + b^2)) + atan2(b, a)i
+         *
+         * @return: Natural logarithm of the complex number
+        */
+        T magnitude = std::sqrt(real * real + imag * imag);
+        T angle = std::atan2(imag, real);
+        return Complex(std::log(magnitude), angle);
     }
 
     Complex conj() const {

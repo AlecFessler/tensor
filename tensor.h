@@ -4,6 +4,7 @@
 #define TENSOR_H
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <numeric>
 #include <vector>
@@ -16,8 +17,8 @@ enum d_type {
     I64, // 64-bit integer
     FP32, // 32-bit floating point
     FP64, // 64-bit floating point
-    CFP32, // 32-bit complex floating point
-    CFP64 // 64-bit complex floating point
+    C32, // 32-bit complex (two 32-bit floats)
+    C64 // 64-bit complex (two 64-bit floats)
 };
 
 struct Slice {
@@ -45,6 +46,11 @@ struct Slice {
         }
         return Slice(index, index + 1, 1); 
     }
+};
+
+enum PaddingType {
+    CONSTANT,
+    REFLECTIVE
 };
 
 /**
@@ -99,10 +105,12 @@ class Tensor {
          * @param offset: Offset of the tensor
          * @return: Indices of the tensor
         */
-        std::vector<int> idx;
+        std::vector<int> idx(shape.size(), 0); // Initialize indices for each dimension.
         for (int i = 0; i < shape.size(); ++i) {
-            idx.push_back(offset / strides[i]);
-            offset %= strides[i];
+            if (strides[i] != 0) {  // Update index only if the stride is non-zero.
+                idx[i] = (offset / strides[i]) % shape[i];  // Calculate the index within the current dimension.
+                offset %= strides[i];  // Reduce offset for the next dimension.
+            }
         }
         return idx;
     }
@@ -134,7 +142,7 @@ class Tensor {
         }
     }
 
-    std::vector<int> resolveBroadcast(const std::vector<int> shape1, const std::vector<int> shape2) {
+    std::vector<int> resolveBroadcast(const std::vector<int> shape1, const std::vector<int> shape2) const {
         /**
          * Resolve the broadcast of two shapes
          * 
@@ -151,8 +159,7 @@ class Tensor {
         */
         size_t maxDims = std::max(shape1.size(), shape2.size());
         std::vector<int> result(maxDims);
-        
-        // iterate backwards over the dimensions
+
         for (size_t i = 0; i < maxDims; i++) {
             int dim1 = i < shape1.size() ? shape1[shape1.size() - 1 - i] : 1;
             int dim2 = i < shape2.size() ? shape2[shape2.size() - 1 - i] : 1;
@@ -161,85 +168,31 @@ class Tensor {
             }
             result[maxDims - 1 - i] = std::max(dim1, dim2);
         }
+        return result;
     }
     
-    void setStridesForBroadcast(std::vector<int> targetShape) {
-        /**
-         * Set the strides for broadcasting the tensor to a target shape
-         * 
-         * @param targetShape: Target shape for broadcasting
-        */
-        std::vector<int> newStrides(targetShape.size());
-        int stride = 1;
+    Tensor<T> setStridesForBroadcast(std::vector<int> targetShape) const {
+        Tensor<T> result(targetShape, dtype);
+        std::vector<int> newStrides(targetShape.size(), 0);  // Initialize strides to zero.
+        result.data = data;
 
-        // Iterate over the target shape in reverse order
+        int stride = 1;
         for (int i = targetShape.size() - 1; i >= 0; --i) {
-            if (i < this->shape.size() && this->shape[i] == targetShape[i]) {
-                // If dimension i is not broadcasted, set the stride
-                newStrides[i] = stride;
-            } // if the dimension is broadcasted, stride remains zero
-            if (i < this->shape.size()) {
-                stride *= this->shape[i];
+            if (i < shape.size()) {
+                if (shape[i] == targetShape[i]) {
+                    // Non-broadcasted dimension: set the stride normally.
+                    newStrides[i] = stride;
+                    stride *= shape[i];
+                } else if (shape[i] == 1) {
+                    // Broadcasted dimension: keep stride as zero.
+                    newStrides[i] = 0;
+                }
             }
         }
 
-        this->strides = newStrides;
+        result.strides = newStrides;
+        return result;
     }
-
-    class TensorIterator {
-        public:
-            TensorIterator(const Tensor<T>& tensor, int start = 0)
-                : tensor(tensor), index(tensor.shape.size(), 0), linear_index(start) {
-                for (int i = tensor.shape.size() - 1; i >= 0 && start > 0; --i) {
-                    index[i] = start % tensor.shape[i];
-                    start /= tensor.shape[i];
-                }
-            }
-
-            auto operator*() const -> const T& { return tensor.data[linear_index]; }
-
-            TensorIterator& operator++() {
-                increment();
-                return *this;
-            }
-
-            TensorIterator operator++(int) {
-                TensorIterator tmp = *this;
-                increment();
-                return tmp;
-            }
-
-            bool operator==(const TensorIterator& other) const { return linear_index == other.linear_index; }
-
-            bool operator!=(const TensorIterator& other) const { return !(*this == other); }
-
-        private:
-            const Tensor<T>& tensor;
-            std::vector<int> index;
-            int linear_index;
-
-            void increment() {
-                for (int i = tensor.shape.size() - 1; i >= 0; --i) {
-                    index[i]++;
-                    linear_index += tensor.strides[i];
-                    if (index[i] < tensor.shape[i]) {
-                        break;
-                    }
-                    if (i != 0) {
-                        linear_index -= index[i] * tensor.strides[i];
-                        index[i] = 0;
-                    }
-                }
-            }
-    };
-
-    TensorIterator begin(const Tensor<T>& tensor) { return TensorIterator(tensor); }
-
-    TensorIterator end(const Tensor<T>& tensor) { return TensorIterator(tensor, tensor.data.size()); }
-
-    const TensorIterator begin() const { return TensorIterator(*this); }
-
-    const TensorIterator end() const {  return TensorIterator(*this, data.size()); }
 
 public:
 
@@ -343,6 +296,110 @@ public:
         }
         return *this;
     }
+    
+    class TensorIterator {
+    public:
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+        using iterator_category = std::input_iterator_tag;
+
+        TensorIterator(Tensor<T>& tensor, size_t offset = 0)
+            : tensor_(tensor), offset_(offset), index_(tensor_.shape.size(), 0) {}
+
+        reference operator*() const {
+            return tensor_.data[offset_];
+        }
+
+        TensorIterator& operator++() {
+            for (int i = tensor_.shape.size() - 1; i >= 0; --i) {
+                if (++index_[i] < tensor_.shape[i]) {
+                    offset_ += tensor_.strides[i];
+                    return *this;
+                }
+                index_[i] = 0;
+                offset_ -= tensor_.strides[i] * (tensor_.shape[i] - 1);
+            }
+            offset_ = tensor_.data.getSize();
+            return *this;
+        }
+
+        TensorIterator operator++(int) {
+            TensorIterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        bool operator==(const TensorIterator& other) const {
+            return offset_ == other.offset_;
+        }
+
+        bool operator!=(const TensorIterator& other) const {
+            return offset_ != other.offset_;
+        }
+
+    private:
+        Tensor<T>& tensor_;
+        size_t offset_;
+        std::vector<int> index_;
+    };
+
+    TensorIterator begin() { return TensorIterator(*this); }
+
+    TensorIterator end() { return TensorIterator(*this, this->size()); }
+
+    class ConstTensorIterator {
+    public:
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+        using iterator_category = std::input_iterator_tag;
+
+        ConstTensorIterator(const Tensor<T>& tensor, size_t offset = 0)
+            : tensor_(tensor), offset_(offset), index_(tensor_.shape.size(), 0) {}
+
+        reference operator*() const {
+            return tensor_.data[offset_];
+        }
+
+        ConstTensorIterator& operator++() {
+            for (int i = tensor_.shape.size() - 1; i >= 0; --i) {
+                if (++index_[i] < tensor_.shape[i]) {
+                    offset_ += tensor_.strides[i];
+                    return *this;
+                }
+                index_[i] = 0;
+                offset_ -= tensor_.strides[i] * (tensor_.shape[i] - 1);
+            }
+            offset_ = tensor_.data.getSize();
+            return *this;
+        }
+
+        ConstTensorIterator operator++(int) {
+            ConstTensorIterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        bool operator==(const ConstTensorIterator& other) const {
+            return offset_ == other.offset_;
+        }
+
+        bool operator!=(const ConstTensorIterator& other) const {
+            return offset_ != other.offset_;
+        }
+
+    private:
+        const Tensor<T>& tensor_;
+        size_t offset_;
+        std::vector<int> index_;
+    };
+    
+    ConstTensorIterator begin() const { return ConstTensorIterator(*this); }
+
+    ConstTensorIterator end() const { return ConstTensorIterator(*this, this->size()); }
 
     T& operator[](std::initializer_list<int> indices) {
         /**
@@ -471,7 +528,6 @@ public:
          * @throws: std::invalid_argument if the dimensions do not match
          * @throws: std::invalid_argument if the shapes do not match along all dimensions except the concatenation axis
          * @throws: std::invalid_argument if the axis is out of bounds
-         * @throws: std::invalid_argument if the data types do not match
         */
         if (!isContiguous() || !other.isContiguous()) {
             throw std::runtime_error("Concatenation requires both tensors to be contiguous.");
@@ -486,9 +542,6 @@ public:
         }
         if (axis < 0 || axis >= shape.size()) {
             throw std::invalid_argument("Axis out of bounds.");
-        }
-        if (dtype != other.dtype) {
-            throw std::invalid_argument("Data types must match.");
         }
 
         // Compute the new shape
@@ -522,16 +575,18 @@ public:
         return result;
     }
 
-    Tensor<T> pad(const std::pair<int, int> padding, int axis) const {
+    Tensor<T> pad(const std::pair<int, int> padding, int axis, PaddingType padType = CONSTANT, int value = T{}) const {
         /**
          * Pad a tensor along a specified axis
          * 
-         * Currently only supports constant padding with 0s
+         * Currently supports constant and reflective padding
          * 
          * @attention: The tensor is assumed to be contiguous
          * 
-         * @param padding: Pair of padding values (before, after)
-         * @param axis: Axis along which to pad, default is 0
+         * @param padding: Pair of padding values for the start and end of the axis
+         * @param axis: Axis along which to pad
+         * @param padType: Type of padding, default is CONSTANT
+         * @param value: Value to use for padding if padType is CONSTANT
          * @return: Padded tensor
          * 
          * @throws: std::runtime_error if the tensor is not contiguous
@@ -548,7 +603,6 @@ public:
         new_shape[axis] += padding.first + padding.second;
         Tensor<T> result(new_shape, dtype);
 
-        // Calculate the block size and total blocks for copying
         int block_size = 1;
         for (int i = axis + 1; i < shape.size(); ++i) {
             block_size *= shape[i];
@@ -559,19 +613,45 @@ public:
             total_blocks *= shape[i];
         }
 
-        // Copy the elements from the original tensor with padding applied
+        // Copy the original data
         for (int block = 0; block < total_blocks; ++block) {
-            // Compute the starting index in the result data for the current block
-            int start_idx = block * block_size * (shape[axis] + padding.first + padding.second) + padding.first * block_size;
-            std::fill_n(result.data.begin() + start_idx - padding.first * block_size, padding.first * block_size, T{});
             std::copy_n(data.begin() + block * block_size * shape[axis], block_size * shape[axis],
-                        result.data.begin() + start_idx);
-            std::fill_n(result.data.begin() + start_idx + block_size * shape[axis], padding.second * block_size, T{});
+                        result.data.begin() + block * block_size * new_shape[axis] + padding.first * block_size);
+        }
+
+        if (padType == CONSTANT) {
+            // Handle constant padding
+            for (int block = 0; block < total_blocks; ++block) {
+                std::fill_n(result.data.begin() + block * block_size * new_shape[axis], padding.first * block_size, value);
+                std::fill_n(result.data.begin() + block * block_size * new_shape[axis] + (padding.first + shape[axis]) * block_size, padding.second * block_size, value);
+            }
+        } else if (padType == REFLECTIVE) {
+            for (int block = 0; block < total_blocks; ++block) {
+                // Left padding
+                for (int i = 0; i < padding.first; ++i) {
+                    int original_idx = padding.first - i;
+                    if (original_idx >= shape[axis]) {
+                        original_idx = 2 * shape[axis] - 2 - original_idx;
+                    }
+                    std::copy_n(data.begin() + block * block_size * shape[axis] + original_idx * block_size, block_size,
+                                result.data.begin() + block * block_size * new_shape[axis] + i * block_size);
+                }
+
+                // Right padding
+                for (int i = 0; i < padding.second; ++i) {
+                    int original_idx = shape[axis] - 2 - i;
+                    if (original_idx < 0) {
+                        original_idx = -original_idx;
+                    }
+                    std::copy_n(data.begin() + block * block_size * shape[axis] + original_idx * block_size, block_size,
+                                result.data.begin() + block * block_size * new_shape[axis] + (padding.first + shape[axis] + i) * block_size);
+                }
+            }
         }
 
         return result;
     }
-    
+        
     Tensor<T> frame(int frameSize, int hopLength, int axis) const {
         /**
          * Frame a tensor along a specified axis
@@ -643,7 +723,7 @@ public:
         }
 
         T result = 0;
-        for (int i = 0; i < data.size(); ++i) {
+        for (int i = 0; i < data.getSize(); ++i) {
             result += data[i] * other.data[i];
         }
 
@@ -709,6 +789,63 @@ public:
 
         return result;
     }
+    
+    template <typename BinaryOp>
+    Tensor<T> elementWiseOperation(const Tensor<T>& tensor1, const Tensor<T>& tensor2, BinaryOp op) const {
+        /**
+         * Elementwise operation on two tensors
+         * 
+         * @param tensor1: First tensor
+         * @param tensor2: Second tensor
+         * @param op: Binary operation to perform
+         * @return: Result of the elementwise operation
+        */
+        std::vector<int> target_shape = resolveBroadcast(tensor1.shape, tensor2.shape);
+        Tensor<T> result(target_shape, tensor1.dtype);
+        Tensor<T> tensor1_broadcasted = tensor1.setStridesForBroadcast(target_shape);
+        Tensor<T> tensor2_broadcasted = tensor2.setStridesForBroadcast(target_shape);
+
+        auto tensor1_it = tensor1_broadcasted.begin(), tensor1_end = tensor1_broadcasted.end();
+        auto tensor2_it = tensor2_broadcasted.begin(), tensor2_end = tensor2_broadcasted.end();
+        auto result_it = result.begin();
+
+        while (result_it != result.end()) {
+            *result_it = op(*tensor1_it, *tensor2_it);
+            ++result_it;
+
+            if (tensor1_it != tensor1_end) {
+                ++tensor1_it;
+            }
+            if (tensor2_it != tensor2_end) {
+                ++tensor2_it;
+            }
+        }
+
+        return result;
+    }
+
+    template <typename BinaryOp>
+    Tensor<T> elementWiseOperationScalar(const Tensor<T>& tensor, const T& scalar, BinaryOp op) const {
+        /**
+         * Elementwise operation on a tensor and a scalar
+         * 
+         * @param tensor: Tensor
+         * @param scalar: Scalar
+         * @param op: Binary operation to perform
+         * @return: Result of the elementwise operation
+        */
+        Tensor<T> result(tensor.shape, tensor.dtype);
+        auto tensor_it = tensor.begin();
+        auto result_it = result.begin();
+
+        while (tensor_it != tensor.end()) {
+            *result_it = op(*tensor_it, scalar);
+            ++tensor_it;
+            ++result_it;
+        }
+
+        return result;
+    }
 
     Tensor<T> operator+(const Tensor<T>& other) const {
         /**
@@ -719,16 +856,7 @@ public:
          * 
          * @throws: std::invalid_argument if the shapes do not match for broadcasting
         */
-        std::vector<int> target_shape = resolveBroadcast(shape, other.shape);
-        this->setStridesForBroadcast(target_shape);
-        other.setStridesForBroadcast(target_shape);
-
-        Tensor<T> result(target_shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] + other.data[i];
-        }
-
-        return result;
+        return elementWiseOperation(*this, other, std::plus<T>());
     }
 
     Tensor<T> operator+(const T& scalar) const {
@@ -738,11 +866,7 @@ public:
          * @param scalar: Scalar to add
          * @return: Result of the elementwise addition
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] + scalar;
-        }
-        return result;
+        return elementWiseOperationScalar(*this, scalar, std::plus<T>());
     }
 
     Tensor<T> operator-(const Tensor<T>& other) const {
@@ -754,16 +878,7 @@ public:
          * 
          * @throws: std::invalid_argument if the shapes do not match for broadcasting
         */
-        std::vector<int> target_shape = resolveBroadcast(shape, other.shape);
-        this->setStridesForBroadcast(target_shape);
-        other.setStridesForBroadcast(target_shape);
-
-        Tensor<T> result(target_shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] - other.data[i];
-        }
-
-        return result;
+        return elementWiseOperation(*this, other, std::minus<T>());
     }
 
     Tensor<T> operator-(const T& scalar) const {
@@ -773,11 +888,7 @@ public:
          * @param scalar: Scalar to subtract
          * @return: Result of the elementwise subtraction
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] - scalar;
-        }
-        return result;
+        return elementWiseOperationScalar(*this, scalar, std::minus<T>());
     }
 
     Tensor<T> operator*(const Tensor<T>& other) const {
@@ -789,16 +900,7 @@ public:
          * 
          * @throws: std::invalid_argument if the shapes do not match for broadcasting
         */
-        std::vector<int> target_shape = resolveBroadcast(shape, other.shape);
-        this->setStridesForBroadcast(target_shape);
-        other.setStridesForBroadcast(target_shape);
-
-        Tensor<T> result(target_shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] * other.data[i];
-        }
-
-        return result;
+        return elementWiseOperation(*this, other, std::multiplies<T>());
     }
     
     Tensor<T> operator*(const T& scalar) const {
@@ -808,11 +910,7 @@ public:
          * @param scalar: Scalar to multiply
          * @return: Result of the elementwise multiplication
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] * scalar;
-        }
-        return result;
+        return elementWiseOperationScalar(*this, scalar, std::multiplies<T>());
     }
 
     Tensor<T> operator/(const Tensor<T>& other) const {
@@ -824,16 +922,7 @@ public:
          * 
          * @throws: std::invalid_argument if the shapes do not match for broadcasting
         */
-        std::vector<int> target_shape = resolveBroadcast(shape, other.shape);
-        this->setStridesForBroadcast(target_shape);
-        other.setStridesForBroadcast(target_shape);
-
-        Tensor<T> result(target_shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] / other.data[i];
-        }
-
-        return result;
+        return elementWiseOperation(*this, other, std::divides<T>());
     }
 
     Tensor<T> operator/(const T& scalar) const {
@@ -843,25 +932,33 @@ public:
          * @param scalar: Scalar to divide
          * @return: Result of the elementwise division
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = data[i] / scalar;
-        }
-        return result;
+        return elementWiseOperationScalar(*this, scalar, std::divides<T>());
     }
+
+    template <typename UnaryOp>
+    Tensor<T> unaryOperation(const Tensor<T>& tensor, UnaryOp op) const {
+            /**
+             * Apply a unary operation to a tensor
+             * 
+             * @param tensor: Tensor to apply the operation to
+             * @param op: Unary operation to perform
+             * @return: Result of the unary operation
+            */
+            Tensor<T> result = *this;
+            for (auto it = result.begin(), end = result.end(); it != end; ++it) {
+                *it = op(*it);
+            }
+            return result;
+        }
 
     Tensor<T> pow(const T& exponent) const {
         /**
-         * Elementwise power of a tensor
+         * Elementwise exponentiation of a tensor
          * 
          * @param exponent: Exponent to raise the tensor to
-         * @return: Result of the elementwise power
+         * @return: Result of the elementwise exponentiation
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = std::pow(data[i], exponent);
-        }
-        return result;
+        return unaryOperation(*this, [exponent](const T& value) { return std::pow(value, exponent); });
     }
 
     Tensor<T> sqrt() const {
@@ -870,11 +967,7 @@ public:
          * 
          * @return: Result of the elementwise square root
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = std::sqrt(data[i]);
-        }
-        return result;
+        return unaryOperation(*this, [](const T& value) { return std::sqrt(value); });
     }
 
     Tensor<T> log() const {
@@ -883,11 +976,7 @@ public:
          * 
          * @return: Result of the elementwise natural logarithm
         */
-        Tensor<T> result(shape, dtype);
-        for (int i = 0; i < data.size(); ++i) {
-            result.data[i] = std::log(data[i]);
-        }
-        return result;
+        return unaryOperation(*this, [](const T& value) { return std::log(value); });
     }
 
     Tensor<T> permute(std::initializer_list<int> order) const {
@@ -1074,7 +1163,7 @@ public:
         int expected_size = 1;
         auto expected_strides = computeStrides(this->shape, expected_size);
         // Check if tensor is already contiguous
-        if (this->strides == expected_strides && this->data.size() == expected_size) {
+        if (this->strides == expected_strides && this->data.getSize() == expected_size) {
             return *this; // If already contiguous, return this tensor
         }
 
@@ -1085,7 +1174,7 @@ public:
 
         // Use iterator to copy data in logical order
         auto it = begin();
-        for (size_t i = 0; i < this->data.size(); ++i, ++it) {
+        for (size_t i = 0; i < this->data.getSize(); ++i, ++it) {
             result.data[i] = *it;
         }
         return result;

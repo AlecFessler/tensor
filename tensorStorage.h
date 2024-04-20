@@ -31,6 +31,40 @@ public:
         std::memset(data.get(), 0, size * sizeof(T)); // zero-initialize the data
     }
 
+    TensorStorage(const TensorStorage& other)
+        : size(other.size), alignment(other.alignment) {
+        /**
+         * Copy constructor, deep copy the data
+         * 
+         * @param other: the other TensorStorage object
+        */
+        T* buffer = static_cast<T*>(std::aligned_alloc(alignment, size * sizeof(T)));
+        if (!buffer) {
+            throw std::bad_alloc();
+        }
+        // temporary unique ptr to ensure that the buffer is freed in case of an exception
+        std::unique_ptr<T, decltype(&std::free)> tmp(buffer, std::free);
+        std::copy(other.data.get(), other.data.get() + size, buffer);
+        data = std::shared_ptr<T>(tmp.release(), std::free);  // Release control from unique_ptr to shared_ptr
+    }
+
+    TensorStorage& operator=(const TensorStorage& other) {
+        /**
+         * Copy assignment, deep copy the data
+         * 
+         * @param other: the other TensorStorage object
+         * @return: the current TensorStorage object
+        */
+        if (this != &other) {
+            TensorStorage tmp(other);
+            std::swap(*this, tmp);
+        }
+        return *this;
+    }
+
+    TensorStorage(TensorStorage&&) = default;
+    TensorStorage& operator=(TensorStorage&&) = default;
+
     T &operator[](size_t index) {
         /**
          * Overload the [] operator to access the data
@@ -102,46 +136,46 @@ public:
         size = newSize;
     }
 
-        class iterator {
-            T* ptr;
-        public:
-            using iterator_category = std::random_access_iterator_tag;
-            using difference_type = std::ptrdiff_t;
-            using value_type = T;
-            using pointer = T*;
-            using reference = T&;
+    class iterator {
+        T* ptr;
+    public:
+        using iterator_category = std::random_access_iterator_tag;
+        using difference_type = std::ptrdiff_t;
+        using value_type = T;
+        using pointer = T*;
+        using reference = T&;
 
-            iterator(pointer ptr) : ptr(ptr) {}
+        iterator(pointer ptr) : ptr(ptr) {}
 
-            reference operator*() const { return *ptr; }
-            pointer operator->() { return ptr; }
+        reference operator*() const { return *ptr; }
+        pointer operator->() { return ptr; }
 
-            // Increment and Decrement
-            iterator& operator++() { ++ptr; return *this; }
-            iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
-            iterator& operator--() { --ptr; return *this; }
-            iterator operator--(int) { iterator tmp = *this; --(*this); return tmp; }
+        // Increment and Decrement
+        iterator& operator++() { ++ptr; return *this; }
+        iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
+        iterator& operator--() { --ptr; return *this; }
+        iterator operator--(int) { iterator tmp = *this; --(*this); return tmp; }
 
-            // Arithmetic operations
-            iterator& operator+=(difference_type n) { ptr += n; return *this; }
-            iterator& operator-=(difference_type n) { ptr -= n; return *this; }
-            iterator operator+(difference_type n) const { return iterator(ptr + n); }
-            iterator operator-(difference_type n) const { return iterator(ptr - n); }
-            difference_type operator-(const iterator& other) const { return ptr - other.ptr; }
+        // Arithmetic operations
+        iterator& operator+=(difference_type n) { ptr += n; return *this; }
+        iterator& operator-=(difference_type n) { ptr -= n; return *this; }
+        iterator operator+(difference_type n) const { return iterator(ptr + n); }
+        iterator operator-(difference_type n) const { return iterator(ptr - n); }
+        difference_type operator-(const iterator& other) const { return ptr - other.ptr; }
 
-            reference operator[](difference_type n) const { return *(ptr + n); }
+        reference operator[](difference_type n) const { return *(ptr + n); }
 
-            // Comparison operators
-            bool operator< (const iterator& other) const { return ptr < other.ptr; }
-            bool operator> (const iterator& other) const { return ptr > other.ptr; }
-            bool operator<=(const iterator& other) const { return ptr <= other.ptr; }
-            bool operator>=(const iterator& other) const { return ptr >= other.ptr; }
-            bool operator==(const iterator& other) const { return ptr == other.ptr; }
-            bool operator!=(const iterator& other) const { return ptr != other.ptr; }
-        };
+        // Comparison operators
+        bool operator< (const iterator& other) const { return ptr < other.ptr; }
+        bool operator> (const iterator& other) const { return ptr > other.ptr; }
+        bool operator<=(const iterator& other) const { return ptr <= other.ptr; }
+        bool operator>=(const iterator& other) const { return ptr >= other.ptr; }
+        bool operator==(const iterator& other) const { return ptr == other.ptr; }
+        bool operator!=(const iterator& other) const { return ptr != other.ptr; }
+    };
 
-        iterator begin() const { return iterator(data.get()); }
-        iterator end() const { return iterator(data.get() + size); }
+    iterator begin() const { return iterator(data.get()); }
+    iterator end() const { return iterator(data.get() + size); }
 };
 
 #endif // TENSOR_STORAGE_H
