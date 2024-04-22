@@ -259,8 +259,25 @@ public:
          * Convert the tensor to a new data type
          * 
          * @return: Tensor object with the new data type
-        */
-        return Tensor<U>(shape);
+         */
+        Tensor<U> result(shape);
+
+        auto src_it = begin();
+        auto dst_it = result.begin();
+
+        while (src_it != end()) {
+            if constexpr (std::is_same_v<T, std::complex<double>> && std::is_same_v<U, float>) {
+                *dst_it = static_cast<U>(std::abs(*src_it));
+            } else if constexpr (std::is_same_v<T, std::complex<float>> && std::is_same_v<U, float>) {
+                *dst_it = static_cast<U>(std::abs(*src_it));
+            } else {
+                *dst_it = static_cast<U>(*src_it);
+            }
+            ++src_it;
+            ++dst_it;
+        }
+
+        return result;
     }
 
     Tensor(const Tensor<T>& other) {
@@ -515,36 +532,29 @@ public:
         /**
          * Overloaded operator [] for slicing the tensor along the first dimension
          * 
-         * @attention The tensor is assumed to be contiguous in the first dimension
-         * 
-         * @param slice: Slice object
+         * @param slice: Slice object specifying the start, stop, and step
          * @return: Sliced tensor
          * 
          * @throws: std::runtime_error if the tensor is not contiguous
-         * @throws: std::invalid_argument if the slice step is zero
-         * @throws: std::out_of_range if the slice indices are out of range
         */
         if (!contiguousFlag) {
             throw std::runtime_error("Slicing requires the tensor to be contiguous.");
         }
 
-        // if start is negative, add the shape to start from the end
         int effective_start = slice.start < 0 ? slice.start + shape[0] : slice.start;
-        // if stop is max int, set it to the shape, otherwise the same logic for negative start applies
         int effective_stop = (slice.stop == std::numeric_limits<int>::max()) ? shape[0] : (slice.stop < 0 ? slice.stop + shape[0] : slice.stop);
 
-        // clamp to within the bounds of the tensor
         effective_start = std::max(0, std::min(shape[0], effective_start));
         effective_stop = std::max(0, std::min(shape[0], effective_stop));
 
         if (slice.step == 0) {
             throw std::invalid_argument("Slice step cannot be zero.");
         }
-        if ((slice.step > 0 && effective_start >= effective_stop) || (slice.step < 0 && effective_start <= effective_stop)) {
-            throw std::out_of_range("Slice indices are out of range given the step.");
+        if ((slice.step > 0 && effective_start > effective_stop) || (slice.step < 0 && effective_start < effective_stop)) {
+            return Tensor<T>({0}); // Return an empty tensor
         }
 
-        int num_elements = std::abs((effective_stop - effective_start + slice.step - (slice.step > 0 ? 1 : -1)) / slice.step);
+        int num_elements = (effective_stop - effective_start + slice.step - 1) / slice.step;
         std::vector<int> new_shape = shape;
         new_shape[0] = num_elements;
 

@@ -52,12 +52,10 @@ Tensor<T> fft(Tensor<T>& signal) {
 
     Tensor<std::complex<double>> even = signal[Slice(0, size, 2)];
     Tensor<std::complex<double>> odd = signal[Slice(1, size, 2)];
-    even = fft(even);
-    odd = fft(odd);
 
     for (int i = 0; i < size / 2; i++) {
-        result[{i}] = even[{i}] + omega_n * even[{i}];
-        result[{i + size / 2}] = even[{i}] - omega_n * even[{i}];
+        result[{i}] = even[{i}] + omega_n * odd[{i}];
+        result[{i + size / 2}] = even[{i}] - omega_n * odd[{i}];
         omega_n *= omega;
     }
 

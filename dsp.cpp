@@ -2,7 +2,7 @@
 #include "tensor.h"
 
 int main() {
-    Tensor<float> filter_banks = Tensor<float>::fromFile("filter_banks/filter_banks.npy");
+    Tensor<float> filter_banks = Tensor<float>::fromFile("filter_banks/filter_banks.npy").squeeze(0).transpose().contiguous();
     Tensor<float> signal = Tensor<float>::arange(0, 2559);
     int stride = 160;
     int n_fft = 512;
@@ -13,22 +13,27 @@ int main() {
     signal = signal.frame(n_fft, stride, 0);
     signal = signal * window_factor;
 
-    Tensor<std::complex<double>> signal_complex = signal.template astype<std::complex<double>>();
+    Tensor<std::complex<double>> complex_signal = signal.template astype<std::complex<double>>();
 
-    Tensor<std::complex<double>> concated;
-    // Loop 16 times, slicing the signal into 16 frames, and computing the FFT of each frame and concatenating the results
+    Tensor<std::complex<double>> spectrogram;
     for (size_t i = 0; i < 16; i++) {
-        Tensor<std::complex<double>> frame = signal_complex[Slice(i, i + 1)];
-        frame.printDims();
+        Tensor<std::complex<double>> frame = complex_signal[Slice(i, i + 1)];
+        frame = frame.squeeze(0);
         Tensor<std::complex<double>> fft_result = fft(frame);
-        fft_result.printDims();
         if (i == 0) {
-            concated = fft_result;
+            spectrogram = fft_result[Slice(0, n_fft / 2 + 1)].unsqueeze(0);
         } else {
-            concated = concated.concat(fft_result, 0);
+            spectrogram = spectrogram.concat(fft_result[Slice(0, n_fft / 2 + 1)].unsqueeze(0), 0);
         }
-        concated.printDims();
     }
+
+    spectrogram = spectrogram.abs().pow(2);
+    Tensor<float> float_spectrogram = spectrogram.template astype<float>();
+    Tensor<float> mel_spectrogram = float_spectrogram.matmul(filter_banks);
+    mel_spectrogram = (mel_spectrogram + 1e-6).log();
+
+    mel_spectrogram.printDims();
+    mel_spectrogram.printData();
 
     return 0;
 }
