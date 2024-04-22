@@ -4,12 +4,14 @@
 #define TENSOR_H
 
 #include <algorithm>
+#include <complex>
 #include <functional>
 #include <iostream>
 #include <numeric>
 #include <vector>
 
-#include "complexNum.h"
+#include <cnpy.h>
+
 #include "tensorStorage.h"
 
 enum d_type {
@@ -17,8 +19,8 @@ enum d_type {
     I64, // 64-bit integer
     FP32, // 32-bit floating point
     FP64, // 64-bit floating point
-    C32, // 32-bit complex (two 32-bit floats)
-    C64 // 64-bit complex (two 64-bit floats)
+    C64, // 64-bit complex (two 32-bit floats)
+    C128 // 128-bit complex (two 64-bit floats)
 };
 
 struct Slice {
@@ -172,21 +174,24 @@ class Tensor {
     }
     
     Tensor<T> setStridesForBroadcast(std::vector<int> targetShape) const {
-        Tensor<T> result(targetShape, dtype);
+        Tensor<T> result(targetShape);
         std::vector<int> newStrides(targetShape.size(), 0);  // Initialize strides to zero.
         result.data = data;
 
-        int stride = 1;
+        int originalIndex = shape.size() - 1;
         for (int i = targetShape.size() - 1; i >= 0; --i) {
-            if (i < shape.size()) {
-                if (shape[i] == targetShape[i]) {
+            if (originalIndex >= 0) {
+                if (shape[originalIndex] == targetShape[i]) {
                     // Non-broadcasted dimension: set the stride normally.
-                    newStrides[i] = stride;
-                    stride *= shape[i];
-                } else if (shape[i] == 1) {
+                    newStrides[i] = std::accumulate(shape.begin() + originalIndex + 1, shape.end(), 1, std::multiplies<int>());
+                } else if (shape[originalIndex] == 1) {
                     // Broadcasted dimension: keep stride as zero.
                     newStrides[i] = 0;
                 }
+                --originalIndex;
+            } else {
+                // Missing dimension in the original tensor: set stride to zero.
+                newStrides[i] = 0;
             }
         }
 
@@ -194,43 +199,70 @@ class Tensor {
         return result;
     }
 
-public:
-
-    Tensor() : dtype(I32), contiguousFlag(true) {
-        shape = {0};
-        strides = {0};
+    static d_type T_to_dtype() {
+        if (std::is_same<T, int>::value) {
+            return I32;
+        } else if (std::is_same<T, long>::value) {
+            return I64;
+        } else if (std::is_same<T, float>::value) {
+            return FP32;
+        } else if (std::is_same<T, double>::value) {
+            return FP64;
+        } else if (std::is_same<T, std::complex<float>>::value) {
+            return C64;
+        } else if (std::is_same<T, std::complex<double>>::value) {
+            return C128;
+        } else {
+            throw std::invalid_argument("Unsupported data type.");
+        }
     }
 
-    Tensor(std::initializer_list<int> shape, d_type dtype) {
+public:
+
+    Tensor() : contiguousFlag(true) {
+        shape = {0};
+        strides = {0};
+        dtype = Tensor<T>::T_to_dtype();
+    }
+
+    Tensor(std::initializer_list<int> shape) {
         /**
          * Constructor for the Tensor class
          * 
          * @param shape: Shape of the tensor
-         * @param dtype: Data type of the tensor
          * @return: Tensor object
         */
         this->shape.assign(shape.begin(), shape.end());
         int size = 1;
         strides = computeStrides(this->shape, size); // pass size as reference to avoid recomputation
         data.resize(size); // Resize the data vector to the final size
-        this->dtype = dtype; // Set the data type
+        this->dtype = Tensor<T>::T_to_dtype();
     }
 
-    Tensor(const std::vector<int>& shape, d_type dtype) {
+    Tensor(const std::vector<int>& shape) {
         /**
          * Constructor for the Tensor class
          * 
          * @param shape: Shape of the tensor
-         * @param dtype: Data type of the tensor
          * @return: Tensor object
         */
         this->shape = shape;
         int size = 1;
         strides = computeStrides(this->shape, size); // pass size as reference to avoid recomputation
         data.resize(size); // Resize the data vector to the final size
-        this->dtype = dtype; // Set the data type
+        this->dtype = Tensor<T>::T_to_dtype();
     }
     
+    template <typename U>
+    Tensor<U> astype() const {
+        /**
+         * Convert the tensor to a new data type
+         * 
+         * @return: Tensor object with the new data type
+        */
+        return Tensor<U>(shape);
+    }
+
     Tensor(const Tensor<T>& other) {
         /**
          * Copy constructor for the Tensor class
@@ -308,6 +340,15 @@ public:
         TensorIterator(Tensor<T>& tensor, size_t offset = 0)
             : tensor_(tensor), offset_(offset), index_(tensor_.shape.size(), 0) {}
 
+        TensorIterator& operator=(const TensorIterator& other) {
+            if (this != &other) {
+                tensor_ = other.tensor_;
+                offset_ = other.offset_;
+                index_ = other.index_;
+            }
+            return *this;
+        }
+
         reference operator*() const {
             return tensor_.data[offset_];
         }
@@ -359,6 +400,15 @@ public:
 
         ConstTensorIterator(const Tensor<T>& tensor, size_t offset = 0)
             : tensor_(tensor), offset_(offset), index_(tensor_.shape.size(), 0) {}
+
+        ConstTensorIterator& operator=(const ConstTensorIterator& other) {
+            if (this != &other) {
+                tensor_ = other.tensor_;
+                offset_ = other.offset_;
+                index_ = other.index_;
+            }
+            return *this;
+        }
 
         reference operator*() const {
             return tensor_.data[offset_];
@@ -498,7 +548,7 @@ public:
         std::vector<int> new_shape = shape;
         new_shape[0] = num_elements;
 
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
 
         int block_size = 1;
         for (int i = 1; i < shape.size(); ++i) {
@@ -513,7 +563,7 @@ public:
 
         return result;
     }
-
+    
     Tensor<T> concat(const Tensor<T>& other, int axis) {
         /**
          * Concatenate two tensors along a specified axis
@@ -547,7 +597,7 @@ public:
         // Compute the new shape
         std::vector<int> new_shape = shape;
         new_shape[axis] += other.shape[axis];
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
 
         // Calculate the stride needed to jump to the next block in the axis of concatenation
         int block_size = 1;
@@ -601,7 +651,7 @@ public:
 
         std::vector<int> new_shape = shape;
         new_shape[axis] += padding.first + padding.second;
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
 
         int block_size = 1;
         for (int i = axis + 1; i < shape.size(); ++i) {
@@ -688,7 +738,7 @@ public:
         new_shape[axis] = num_frames; // Set the frame size for the specified axis
         new_shape.push_back(frameSize); // Add a new dimension at the end for the frames
 
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
         result.data = data; // Share the same data
 
         // Adjust strides
@@ -748,7 +798,7 @@ public:
         std::vector<int> result_shape(shape.begin(), shape.end() - 1);
         result_shape.push_back(other.shape.back());
 
-        Tensor<T> result(result_shape, dtype);
+        Tensor<T> result(result_shape);
 
         // Aggregate all but final 2 dims into a batch, there are batch_size matrices to multiply
         int batch_size = std::accumulate(shape.begin(), shape.end() - 2, 1, std::multiplies<int>());
@@ -801,7 +851,7 @@ public:
          * @return: Result of the elementwise operation
         */
         std::vector<int> target_shape = resolveBroadcast(tensor1.shape, tensor2.shape);
-        Tensor<T> result(target_shape, tensor1.dtype);
+        Tensor<T> result(target_shape);
         Tensor<T> tensor1_broadcasted = tensor1.setStridesForBroadcast(target_shape);
         Tensor<T> tensor2_broadcasted = tensor2.setStridesForBroadcast(target_shape);
 
@@ -816,8 +866,14 @@ public:
             if (tensor1_it != tensor1_end) {
                 ++tensor1_it;
             }
+            if (tensor1_it == tensor1_end) { // reset for broadcasting
+                tensor1_it = tensor1_broadcasted.begin();
+            }
             if (tensor2_it != tensor2_end) {
                 ++tensor2_it;
+            }
+            if (tensor2_it == tensor2_end) { // reset for broadcasting
+                tensor2_it = tensor2_broadcasted.begin();
             }
         }
 
@@ -834,7 +890,7 @@ public:
          * @param op: Binary operation to perform
          * @return: Result of the elementwise operation
         */
-        Tensor<T> result(tensor.shape, tensor.dtype);
+        Tensor<T> result(tensor.shape);
         auto tensor_it = tensor.begin();
         auto result_it = result.begin();
 
@@ -869,6 +925,17 @@ public:
         return elementWiseOperationScalar(*this, scalar, std::plus<T>());
     }
 
+    friend Tensor<T> operator+(const T& scalar, const Tensor<T>& tensor) {
+        /**
+         * Elementwise addition of a scalar and a tensor
+         * 
+         * @param scalar: Scalar to add
+         * @param tensor: Tensor to add
+         * @return: Result of the elementwise addition
+        */
+        return tensor + scalar;
+    }
+
     Tensor<T> operator-(const Tensor<T>& other) const {
         /**
          * Elementwise subtraction of two tensors
@@ -889,6 +956,18 @@ public:
          * @return: Result of the elementwise subtraction
         */
         return elementWiseOperationScalar(*this, scalar, std::minus<T>());
+    }
+
+    friend Tensor<T> operator-(const T& scalar, const Tensor<T>& tensor) {
+        /**
+         * Elementwise subtraction of a scalar and a tensor
+         * 
+         * @param scalar: Scalar to subtract
+         * @param tensor: Tensor to subtract
+         * @return: Result of the elementwise subtraction
+        */
+        Tensor<T> result = Tensor<T>::full(tensor.getShape(), scalar);
+        return result - tensor;
     }
 
     Tensor<T> operator*(const Tensor<T>& other) const {
@@ -913,6 +992,17 @@ public:
         return elementWiseOperationScalar(*this, scalar, std::multiplies<T>());
     }
 
+    friend Tensor<T> operator*(const T& scalar, const Tensor<T>& tensor) {
+        /**
+         * Elementwise multiplication of a scalar and a tensor
+         * 
+         * @param scalar: Scalar to multiply
+         * @param tensor: Tensor to multiply
+         * @return: Result of the elementwise multiplication
+        */
+        return tensor * scalar;
+    }
+
     Tensor<T> operator/(const Tensor<T>& other) const {
         /**
          * Elementwise division of two tensors
@@ -933,6 +1023,18 @@ public:
          * @return: Result of the elementwise division
         */
         return elementWiseOperationScalar(*this, scalar, std::divides<T>());
+    }
+
+    friend Tensor<T> operator/(const T& scalar, const Tensor<T>& tensor) {
+        /**
+         * Elementwise division of a scalar and a tensor
+         * 
+         * @param scalar: Scalar to divide
+         * @param tensor: Tensor to divide
+         * @return: Result of the elementwise division
+        */
+        Tensor<T> result = Tensor<T>::full(tensor.getShape(), scalar);
+        return result / tensor;
     }
 
     template <typename UnaryOp>
@@ -977,6 +1079,42 @@ public:
          * @return: Result of the elementwise natural logarithm
         */
         return unaryOperation(*this, [](const T& value) { return std::log(value); });
+    }
+    
+    Tensor<T> abs() const {
+        /**
+         * Elementwise absolute value of a tensor
+         * 
+         * @return: Result of the elementwise absolute value
+        */
+        return unaryOperation(*this, [](const T& value) { return std::abs(value); });
+    }
+
+    Tensor<T> exp() const {
+        /**
+         * Elementwise exponential of a tensor
+         * 
+         * @return: Result of the elementwise exponential
+        */
+        return unaryOperation(*this, [](const T& value) { return std::exp(value); });
+    }
+
+    Tensor<T> sin() const {
+        /**
+         * Elementwise sine of a tensor
+         * 
+         * @return: Result of the elementwise sine
+        */
+        return unaryOperation(*this, [](const T& value) { return std::sin(value); });
+    }
+
+    Tensor<T> cos() const {
+        /**
+         * Elementwise cosine of a tensor
+         * 
+         * @return: Result of the elementwise cosine
+        */
+        return unaryOperation(*this, [](const T& value) { return std::cos(value); });
     }
 
     Tensor<T> permute(std::initializer_list<int> order) const {
@@ -1024,7 +1162,7 @@ public:
             new_strides[i] = this->strides[order[i]];
         }
 
-        Tensor<T> result(new_shape, this->dtype);
+        Tensor<T> result(new_shape);
         result.strides = new_strides;
         result.data = this->data; // Share the same data
 
@@ -1092,7 +1230,7 @@ public:
             throw std::invalid_argument("Reshape size must remain constant.");
         }
 
-        Tensor<T> result(shape, dtype);
+        Tensor<T> result(shape);
         result.data = data; // Share the same data
 
         return result;
@@ -1118,7 +1256,7 @@ public:
         std::vector<int> new_shape = shape;
         new_shape.erase(new_shape.begin() + axis);
 
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
         result.data = data; // Share the same data
 
         return result;
@@ -1140,7 +1278,7 @@ public:
         std::vector<int> new_shape = shape;
         new_shape.insert(new_shape.begin() + axis, 1);
 
-        Tensor<T> result(new_shape, dtype);
+        Tensor<T> result(new_shape);
         result.data = data; // Share the same data
 
         return result;
@@ -1168,7 +1306,7 @@ public:
         }
 
         // Create a new tensor with the same shape but default strides
-        Tensor<T> result(this->shape, this->dtype);
+        Tensor<T> result(this->shape);
         result.data.resize(expected_size);
         result.strides = expected_strides;
 
@@ -1199,6 +1337,10 @@ public:
         return shape;
     }
 
+    d_type getDtype() const {
+        return dtype;
+    }
+
     void printData() const {
         /**
          * Print the tensor
@@ -1224,6 +1366,130 @@ public:
             if (i < strides.size() - 1) std::cout << " ";
         }
         std::cout << "]\n";
+    }
+
+    static Tensor<T> fromFile(const std::string& filePath) {
+        /**
+         * Load a tensor from a file
+         * 
+         * Currently only supports loading tensors from .npy files
+         *
+         * @param filePath: Path to the file
+         * @return: Tensor loaded from the file
+         *
+         * @throws: std::runtime_error if the file format is not supported
+         */
+        std::string extension = filePath.substr(filePath.find_last_of(".") + 1);
+        if (extension == "npy") {
+            cnpy::NpyArray arr = cnpy::npy_load(filePath);
+            std::vector<int> shape(arr.shape.begin(), arr.shape.end());
+
+            d_type dtype;
+            switch (arr.word_size) {
+                case 4:
+                    if (std::is_same<T, int32_t>::value)
+                        dtype = d_type::I32;
+                    else if (std::is_same<T, float>::value)
+                        dtype = d_type::FP32;
+                    else
+                        throw std::runtime_error("Unsupported data type.");
+                    break;
+                case 8:
+                    if (std::is_same<T, int64_t>::value)
+                        dtype = d_type::I64;
+                    else if (std::is_same<T, double>::value)
+                        dtype = d_type::FP64;
+                    else if (std::is_same<T, std::complex<float>>::value)
+                        dtype = d_type::C64;
+                    else
+                        throw std::runtime_error("Unsupported data type.");
+                    break;
+                case 16:
+                    if (std::is_same<T, std::complex<double>>::value)
+                        dtype = d_type::C128;
+                    else
+                        throw std::runtime_error("Unsupported data type.");
+                    break;
+                default:
+                    throw std::runtime_error("Unsupported data type.");
+            }
+
+            Tensor<T> tensor(shape);
+            std::copy(arr.data<T>(), arr.data<T>() + tensor.size(), tensor.data.rawPtr());
+            return tensor;
+        } else {
+            throw std::runtime_error("Unsupported file format. Supported formats: .npy");
+        }
+    }
+
+    void toFile(const std::string& filePath) const {
+        /**
+         * Save a tensor to a file
+         * 
+         * Currently only supports saving tensors to .npy files
+         *
+         * @param filePath: Path to the file
+         *
+         * @throws: std::runtime_error if the file format is not supported
+         */
+        std::string extension = filePath.substr(filePath.find_last_of(".") + 1);
+        if (extension == "npy") {
+            std::vector<size_t> shape(this->shape.begin(), this->shape.end());
+            cnpy::npy_save(filePath, data.rawPtr(), shape);
+        } else {
+            throw std::runtime_error("Unsupported file format. Supported formats: .npy");
+        }
+    }
+
+    static Tensor<T> arange(T start, T stop, T step = 1) {
+        /**
+         * Create a tensor with values from start to stop with a specified step size
+         * 
+         * @param start: Start value
+         * @param stop: Stop value
+         * @param step: Step size, default is 1
+         * @return: Tensor with values from start to stop
+         * 
+         * @throws: std::invalid_argument if the step is zero
+         * @throws: std::invalid_argument if the start, stop, step combination is invalid
+         */
+        static_assert(std::is_arithmetic<T>::value, "T must be an arithmetic type.");
+        if (step == 0) {
+            throw std::invalid_argument("Step cannot be zero.");
+        }
+        if ((step > 0 && start >= stop) || (step < 0 && start <= stop)) {
+            throw std::invalid_argument("Invalid start, stop, step combination.");
+        }
+        int size = std::ceil((stop - start) / step);
+        Tensor<T> result({size});
+        for (int i = 0; i < size; ++i) {
+            result[{i}] = start + i * step;
+        }
+        return result;
+    }
+
+    static Tensor<T> full(std::vector<int> shape, T value) {
+        /**
+         * Create a tensor of a specified shape filled with a value
+         * 
+         * @param shape: Shape of the tensor
+         * @param value: Value to fill the tensor with
+         * @return: Tensor filled with the specified value
+         */
+        Tensor<T> result(shape);
+        std::fill(result.data.begin(), result.data.end(), value);
+        return result;
+    }
+
+    static Tensor<T> full(std::initializer_list<int> shape, T value) {
+        /**
+         * Alternative method to call full with an initializer list
+         * 
+         * @param shape: Shape of the tensor
+         * @param value: Value to fill the tensor with
+         * @return: Tensor filled with the specified value
+         */
+        return full(std::vector<int>(shape.begin(), shape.end()), value);
     }
 };
 

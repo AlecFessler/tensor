@@ -7,78 +7,180 @@ class TensorTest : public ::testing::Test {};
 
 // Test initialization with integers using an initializer list
 TEST_F(TensorTest, IntegerInitializationWithInitializerList) {
-    Tensor<int> tensorInt({1, 1}, I32);
+    Tensor<int> tensorInt({1, 1});
     int valueInt = tensorInt[{0, 0}];
     ASSERT_EQ(valueInt, 0);
 
-    Tensor<long long> tensorLong({1, 1}, I64);
-    long long valueLong = tensorLong[{0, 0}];
-    ASSERT_EQ(valueLong, 0LL);
+    Tensor<long> tensorLong({1, 1});
+    long valueLong = tensorLong[{0, 0}];
+    ASSERT_EQ(valueLong, 0L);
 }
 
 // Test initialization with integers using a vector
 TEST_F(TensorTest, IntegerInitializationWithVector) {
-    Tensor<int> tensorInt(std::vector<int>{1, 1}, I32);
+    Tensor<int> tensorInt(std::vector<int>{1, 1});
     int valueInt = tensorInt[std::vector<int>{0, 0}];
     ASSERT_EQ(valueInt, 0);
 
-    Tensor<long long> tensorLong(std::vector<int>{1, 1}, I64);
+    Tensor<long> tensorLong(std::vector<int>{1, 1});
     long long valueLong = tensorLong[std::vector<int>{0, 0}];
-    ASSERT_EQ(valueLong, 0LL);
+    ASSERT_EQ(valueLong, 0L);
 }
 
 // Test initialization with floating points using an initializer list
 TEST_F(TensorTest, FloatingPointInitializationWithInitializerList) {
-    Tensor<float> tensorFloat({1, 1}, FP32);
+    Tensor<float> tensorFloat({1, 1});
     float valueFloat = tensorFloat[{0, 0}];
     ASSERT_FLOAT_EQ(valueFloat, 0.0f);
 
-    Tensor<double> tensorDouble({1, 1}, FP64);
+    Tensor<double> tensorDouble({1, 1});
     double valueDouble = tensorDouble[{0, 0}];
     ASSERT_DOUBLE_EQ(valueDouble, 0.0);
 }
 
 // Test initialization with floating points using a vector
 TEST_F(TensorTest, FloatingPointInitializationWithVector) {
-    Tensor<float> tensorFloat(std::vector<int>{1, 1}, FP32);
+    Tensor<float> tensorFloat(std::vector<int>{1, 1});
     float valueFloat = tensorFloat[std::vector<int>{0, 0}];
     ASSERT_FLOAT_EQ(valueFloat, 0.0f);
 
-    Tensor<double> tensorDouble(std::vector<int>{1, 1}, FP64);
+    Tensor<double> tensorDouble(std::vector<int>{1, 1});
     double valueDouble = tensorDouble[std::vector<int>{0, 0}];
     ASSERT_DOUBLE_EQ(valueDouble, 0.0);
 }
 
 // Test initialization with complex numbers using an initializer list
 TEST_F(TensorTest, ComplexNumberInitializationWithInitializerList) {
-    Tensor<std::complex<float>> tensorC32({1, 1}, C32);
-    std::complex<float> valueC32 = tensorC32[{0, 0}];
-    ASSERT_FLOAT_EQ(valueC32.real(), 0.0f);
-    ASSERT_FLOAT_EQ(valueC32.imag(), 0.0f);
+    Tensor<std::complex<float>> tensorC64({1, 1});
+    std::complex<float> valueC64 = tensorC64[{0, 0}];
+    ASSERT_FLOAT_EQ(valueC64.real(), 0.0f);
+    ASSERT_FLOAT_EQ(valueC64.imag(), 0.0f);
 
-    Tensor<std::complex<double>> tensorC64({1, 1}, C64);
-    std::complex<double> valueC64 = tensorC64[{0, 0}];
-    ASSERT_DOUBLE_EQ(valueC64.real(), 0.0);
-    ASSERT_DOUBLE_EQ(valueC64.imag(), 0.0);
+    Tensor<std::complex<double>> tensorC128({1, 1});
+    std::complex<double> valueC128 = tensorC128[{0, 0}];
+    ASSERT_DOUBLE_EQ(valueC128.real(), 0.0);
+    ASSERT_DOUBLE_EQ(valueC128.imag(), 0.0);
 }
 
 // Test initialization with complex numbers using a vector
 TEST_F(TensorTest, ComplexNumberInitializationWithVector) {
-    Tensor<std::complex<float>> tensorC32(std::vector<int>{1, 1}, C32);
-    std::complex<float> valueC32 = tensorC32[std::vector<int>{0, 0}];
-    ASSERT_FLOAT_EQ(valueC32.real(), 0.0f);
-    ASSERT_FLOAT_EQ(valueC32.imag(), 0.0f);
+    Tensor<std::complex<float>> tensorC64(std::vector<int>{1, 1});
+    std::complex<float> valueC64 = tensorC64[std::vector<int>{0, 0}];
+    ASSERT_FLOAT_EQ(valueC64.real(), 0.0f);
+    ASSERT_FLOAT_EQ(valueC64.imag(), 0.0f);
 
-    Tensor<std::complex<double>> tensorC64(std::vector<int>{1, 1}, C64);
-    std::complex<double> valueC64 = tensorC64[std::vector<int>{0, 0}];
-    ASSERT_DOUBLE_EQ(valueC64.real(), 0.0);
-    ASSERT_DOUBLE_EQ(valueC64.imag(), 0.0);
+    Tensor<std::complex<double>> tensorC128(std::vector<int>{1, 1});
+    std::complex<double> valueC128 = tensorC128[std::vector<int>{0, 0}];
+    ASSERT_DOUBLE_EQ(valueC128.real(), 0.0);
+    ASSERT_DOUBLE_EQ(valueC128.imag(), 0.0);
+}
+
+TEST_F(TensorTest, FromFileNpy) {
+    std::string filePath = "test_data.npy";
+    std::vector<int> expectedShape = {2, 3, 4};
+    d_type expectedDtype = d_type::FP64;
+
+    // Create a sample tensor and save it to a .npy file
+    Tensor<double> originalTensor(expectedShape);
+    for (int i = 0; i < expectedShape[0]; ++i) {
+        for (int j = 0; j < expectedShape[1]; ++j) {
+            for (int k = 0; k < expectedShape[2]; ++k) {
+                double value = static_cast<double>(i * expectedShape[1] * expectedShape[2] + j * expectedShape[2] + k);
+                originalTensor[{i, j, k}] = value;
+            }
+        }
+    }
+    originalTensor.toFile(filePath);
+
+    // Load the tensor from the .npy file
+    Tensor<double> loadedTensor = Tensor<double>::fromFile(filePath);
+
+    // Check if the loaded tensor has the expected shape, dtype, and values
+    std::vector<int> loadedShape = loadedTensor.getShape();
+    EXPECT_EQ(loadedShape, expectedShape);
+    EXPECT_EQ(loadedTensor.getDtype(), expectedDtype);
+    for (int i = 0; i < expectedShape[0]; ++i) {
+        for (int j = 0; j < expectedShape[1]; ++j) {
+            for (int k = 0; k < expectedShape[2]; ++k) {
+                double expectedValue = static_cast<double>(i * expectedShape[1] * expectedShape[2] + j * expectedShape[2] + k);
+                double loadedValue = loadedTensor[{i, j, k}];
+                EXPECT_EQ(loadedValue, expectedValue);
+            }
+        }
+    }
+}
+
+TEST_F(TensorTest, ToFileNpy) {
+    std::string filePath = "test_data.npy";
+    std::vector<int> expectedShape = {2, 3, 4};
+    d_type expectedDtype = d_type::FP64;
+
+    // Create a sample tensor
+    Tensor<double> tensor(expectedShape);
+    for (int i = 0; i < expectedShape[0]; ++i) {
+        for (int j = 0; j < expectedShape[1]; ++j) {
+            for (int k = 0; k < expectedShape[2]; ++k) {
+                double value = static_cast<double>(i * expectedShape[1] * expectedShape[2] + j * expectedShape[2] + k);
+                tensor[{i, j, k}] = value;
+            }
+        }
+    }
+
+    // Save the tensor to a .npy file
+    tensor.toFile(filePath);
+
+    // Load the tensor from the .npy file
+    Tensor<double> loadedTensor = Tensor<double>::fromFile(filePath);
+
+    // Check if the loaded tensor has the expected shape, dtype, and values
+    std::vector<int> loadedShape = loadedTensor.getShape();
+    EXPECT_EQ(loadedShape, expectedShape);
+    EXPECT_EQ(loadedTensor.getDtype(), expectedDtype);
+    for (int i = 0; i < expectedShape[0]; ++i) {
+        for (int j = 0; j < expectedShape[1]; ++j) {
+            for (int k = 0; k < expectedShape[2]; ++k) {
+                double expectedValue = static_cast<double>(i * expectedShape[1] * expectedShape[2] + j * expectedShape[2] + k);
+                double loadedValue = loadedTensor[{i, j, k}];
+                EXPECT_EQ(loadedValue, expectedValue);
+            }
+        }
+    }
+}
+
+TEST_F(TensorTest, arange) {
+    Tensor<int> tensor = Tensor<int>::arange(0, 10, 1);
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_EQ(tensor[{i}], i);
+    }
+
+    Tensor<int> tensorStep = Tensor<int>::arange(0, 10, 2);
+    for (int i = 0; i < 5; ++i) {
+        ASSERT_EQ(tensorStep[{i}], i * 2);
+    }
+}
+
+TEST_F(TensorTest, full) {
+    Tensor<int> tensor = Tensor<int>::full({2, 2}, 5);
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            int result = tensor[{i, j}];
+            ASSERT_EQ(result, 5);
+        }
+    }
+
+    Tensor<float> tensorFloat = Tensor<float>::full({2, 2}, 3.14f);
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            float result = tensorFloat[{i, j}];
+            ASSERT_FLOAT_EQ(result, 3.14f);
+        }
+    }
 }
 
 class TensorIndexingTest : public ::testing::Test {
 protected:
-    Tensor<int> tensorInt3D{{3, 3, 3}, I32};
-    Tensor<std::complex<float>> tensorComplex2D{{3, 3}, C32};
+    Tensor<int> tensorInt3D{{3, 3, 3}};
+    Tensor<std::complex<float>> tensorComplex2D{{3, 3}};
 
     void SetUp() override {
         int value = 0;
@@ -157,7 +259,7 @@ protected:
     Tensor<int> tensorInt2D;
 
     void SetUp() override {
-        tensorInt2D = Tensor<int>({5, 5}, I32);
+        tensorInt2D = Tensor<int>({5, 5});
         int value = 1;
         for (int i = 0; i < 5; ++i) {
             for (int j = 0; j < 5; ++j) {
@@ -246,7 +348,7 @@ TEST_F(TensorSlicingTest, InvalidStepSlice) {
 
 // Test slice requiring the tensor to be contiguous
 TEST_F(TensorSlicingTest, RequiresContiguity) {
-    Tensor<int> nonContiguousTensor(std::vector<int>{3, 3}, I32);
+    Tensor<int> nonContiguousTensor(std::vector<int>{3, 3});
     nonContiguousTensor = nonContiguousTensor.transpose(); // Make the tensor non-contiguous
     EXPECT_THROW(nonContiguousTensor[Slice()], std::runtime_error);
 }
@@ -259,7 +361,7 @@ protected:
 
     void SetUp() override {
         // Setting up a 2x2 tensor
-        tensor2D = Tensor<int>({2, 2}, I32);
+        tensor2D = Tensor<int>({2, 2});
         int value = 1;
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -268,7 +370,7 @@ protected:
         }
 
         // Setting up another 2x2 tensor for concatenation tests
-        tensor2D_other = Tensor<int>({2, 2}, I32);
+        tensor2D_other = Tensor<int>({2, 2});
         value = 5;
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -277,7 +379,7 @@ protected:
         }
 
         // Setting up a 2x2x2 tensor for 3D concatenation tests
-        tensor3D = Tensor<int>({2, 2, 2}, I32);
+        tensor3D = Tensor<int>({2, 2, 2});
         value = 1;
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -322,7 +424,7 @@ TEST_F(TensorConcatTest, MismatchedDimensions) {
 }
 
 TEST_F(TensorConcatTest, MismatchedShapes) {
-    Tensor<int> mismatchedTensor = Tensor<int>({3, 2}, I32);  // Different first dimension
+    Tensor<int> mismatchedTensor = Tensor<int>({3, 2});  // Different first dimension
     EXPECT_THROW(tensor2D.concat(mismatchedTensor, 1), std::invalid_argument);
 }
 
@@ -337,12 +439,12 @@ protected:
     Tensor<int> tensor3D;
 
     void SetUp() override {
-        tensor1D = Tensor<int>({5}, I32);
+        tensor1D = Tensor<int>({5});
         for (int i = 0; i < 5; ++i) {
             tensor1D[{i}] = i + 1;  // 1, 2, 3, 4, 5
         }
 
-        tensor2D = Tensor<int>({3, 3}, I32);
+        tensor2D = Tensor<int>({3, 3});
         int value = 1;
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
@@ -350,7 +452,7 @@ protected:
             }
         }
 
-        tensor3D = Tensor<int>({2, 2, 2}, I32);
+        tensor3D = Tensor<int>({2, 2, 2});
         value = 1;
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -442,12 +544,12 @@ protected:
     Tensor<int> tensor2D;
 
     void SetUp() override {
-        tensor1D = Tensor<int>({10}, I32);
+        tensor1D = Tensor<int>({10});
         for (int i = 0; i < 10; ++i) {
             tensor1D[{i}] = i + 1;
         }
 
-        tensor2D = Tensor<int>({4, 4}, I32);
+        tensor2D = Tensor<int>({4, 4});
         int value = 1;
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 4; ++j) {
@@ -513,8 +615,8 @@ TEST_F(TensorFrameTest, InvalidHopLengthException) {
 class TensorDotTest : public ::testing::Test {};
 
 TEST_F(TensorDotTest, DotProductInt32) {
-    Tensor<int> tensor1({3}, I32);
-    Tensor<int> tensor2({3}, I32);
+    Tensor<int> tensor1({3});
+    Tensor<int> tensor2({3});
     tensor1[{0}] = 1; tensor1[{1}] = 2; tensor1[{2}] = 3;
     tensor2[{0}] = 4; tensor2[{1}] = 5; tensor2[{2}] = 6;
     int result = tensor1.dot(tensor2);
@@ -522,17 +624,17 @@ TEST_F(TensorDotTest, DotProductInt32) {
 }
 
 TEST_F(TensorDotTest, DotProductInt64) {
-    Tensor<long long> tensor1({3}, I64);
-    Tensor<long long> tensor2({3}, I64);
-    tensor1[{0}] = 1LL; tensor1[{1}] = 2LL; tensor1[{2}] = 3LL;
-    tensor2[{0}] = 4LL; tensor2[{1}] = 5LL; tensor2[{2}] = 6LL;
+    Tensor<long> tensor1({3});
+    Tensor<long> tensor2({3});
+    tensor1[{0}] = 1L; tensor1[{1}] = 2L; tensor1[{2}] = 3L;
+    tensor2[{0}] = 4L; tensor2[{1}] = 5L; tensor2[{2}] = 6L;
     long long result = tensor1.dot(tensor2);
-    ASSERT_EQ(result, 32LL);
+    ASSERT_EQ(result, 32L);
 }
 
 TEST_F(TensorDotTest, DotProductFloat32) {
-    Tensor<float> tensor1({3}, FP32);
-    Tensor<float> tensor2({3}, FP32);
+    Tensor<float> tensor1({3});
+    Tensor<float> tensor2({3});
     tensor1[{0}] = 1.0f; tensor1[{1}] = 2.0f; tensor1[{2}] = 3.0f;
     tensor2[{0}] = 4.0f; tensor2[{1}] = 5.0f; tensor2[{2}] = 6.0f;
     float result = tensor1.dot(tensor2);
@@ -540,8 +642,8 @@ TEST_F(TensorDotTest, DotProductFloat32) {
 }
 
 TEST_F(TensorDotTest, DotProductFloat64) {
-    Tensor<double> tensor1({3}, FP64);
-    Tensor<double> tensor2({3}, FP64);
+    Tensor<double> tensor1({3});
+    Tensor<double> tensor2({3});
     tensor1[{0}] = 1.0; tensor1[{1}] = 2.0; tensor1[{2}] = 3.0;
     tensor2[{0}] = 4.0; tensor2[{1}] = 5.0; tensor2[{2}] = 6.0;
     double result = tensor1.dot(tensor2);
@@ -549,8 +651,8 @@ TEST_F(TensorDotTest, DotProductFloat64) {
 }
 
 TEST_F(TensorDotTest, DotProductComplex32) {
-    Tensor<std::complex<float>> tensor1({3}, C32);
-    Tensor<std::complex<float>> tensor2({3}, C32);
+    Tensor<std::complex<float>> tensor1({3});
+    Tensor<std::complex<float>> tensor2({3});
     tensor1[{0}] = std::complex<float>(1.0f, 2.0f);
     tensor1[{1}] = std::complex<float>(3.0f, 4.0f);
     tensor1[{2}] = std::complex<float>(5.0f, 6.0f);
@@ -563,8 +665,8 @@ TEST_F(TensorDotTest, DotProductComplex32) {
 }
 
 TEST_F(TensorDotTest, DotProductComplex64) {
-    Tensor<std::complex<double>> tensor1({3}, C64);
-    Tensor<std::complex<double>> tensor2({3}, C64);
+    Tensor<std::complex<double>> tensor1({3});
+    Tensor<std::complex<double>> tensor2({3});
     tensor1[{0}] = std::complex<double>(1.0f, 2.0f);
     tensor1[{1}] = std::complex<double>(3.0f, 4.0f);
     tensor1[{2}] = std::complex<double>(5.0f, 6.0f);
@@ -577,8 +679,8 @@ TEST_F(TensorDotTest, DotProductComplex64) {
 }
 
 TEST_F(TensorDotTest, NonContiguousTensorException) {
-    Tensor<int> tensor1({3, 3}, I32);
-    Tensor<int> tensor2({3, 3}, I32);
+    Tensor<int> tensor1({3, 3});
+    Tensor<int> tensor2({3, 3});
     Tensor<int> nonContiguousTensor1 = tensor1.permute({1, 0});
     Tensor<int> nonContiguousTensor2 = tensor2.permute({1, 0});
     EXPECT_THROW(nonContiguousTensor1.dot(tensor2), std::runtime_error);
@@ -586,8 +688,8 @@ TEST_F(TensorDotTest, NonContiguousTensorException) {
 }
 
 TEST_F(TensorDotTest, MismatchedShapesException) {
-    Tensor<int> tensor1({3}, I32);
-    Tensor<int> tensor2({4}, I32);
+    Tensor<int> tensor1({3});
+    Tensor<int> tensor2({4});
     EXPECT_THROW(tensor1.dot(tensor2), std::invalid_argument);
 }
 
@@ -600,24 +702,24 @@ protected:
 
     void SetUp() override {
         // Setup integer tensors
-        tensorInt1 = Tensor<int>({2, 2}, I32);
-        tensorInt2 = Tensor<int>({2, 2}, I32);
+        tensorInt1 = Tensor<int>({2, 2});
+        tensorInt2 = Tensor<int>({2, 2});
         tensorInt1[{0, 0}] = 1; tensorInt1[{0, 1}] = 2;
         tensorInt1[{1, 0}] = 3; tensorInt1[{1, 1}] = 4;
         tensorInt2[{0, 0}] = 2; tensorInt2[{0, 1}] = 0;
         tensorInt2[{1, 0}] = 1; tensorInt2[{1, 1}] = 2;
 
         // Setup float tensors
-        tensorFloat1 = Tensor<float>({2, 2}, FP32);
-        tensorFloat2 = Tensor<float>({2, 2}, FP32);
+        tensorFloat1 = Tensor<float>({2, 2});
+        tensorFloat2 = Tensor<float>({2, 2});
         tensorFloat1[{0, 0}] = 1.5f; tensorFloat1[{0, 1}] = 2.5f;
         tensorFloat1[{1, 0}] = 3.5f; tensorFloat1[{1, 1}] = 4.5f;
         tensorFloat2[{0, 0}] = 2.1f; tensorFloat2[{0, 1}] = 0.1f;
         tensorFloat2[{1, 0}] = 1.1f; tensorFloat2[{1, 1}] = 2.1f;
 
         // Setup complex number tensors
-        tensorComplex1 = Tensor<std::complex<float>>({2, 2}, C32);
-        tensorComplex2 = Tensor<std::complex<float>>({2, 2}, C32);
+        tensorComplex1 = Tensor<std::complex<float>>({2, 2});
+        tensorComplex2 = Tensor<std::complex<float>>({2, 2});
         tensorComplex1[{0, 0}] = std::complex<float>(1.0f, 2.0f);
         tensorComplex1[{0, 1}] = std::complex<float>(3.0f, 4.0f);
         tensorComplex1[{1, 0}] = std::complex<float>(5.0f, 6.0f);
@@ -628,8 +730,8 @@ protected:
         tensorComplex2[{1, 1}] = std::complex<float>(2.0f, 2.0f);
 
         // Setup batched tensors
-        tensorBatch1 = Tensor<float>({2, 2, 2}, FP32);
-        tensorBatch2 = Tensor<float>({2, 2, 2}, FP32);
+        tensorBatch1 = Tensor<float>({2, 2, 2});
+        tensorBatch2 = Tensor<float>({2, 2, 2});
 
         // First batch initialization
         tensorBatch1[{0, 0, 0}] = 1; tensorBatch1[{0, 0, 1}] = 2;
@@ -718,21 +820,21 @@ protected:
 
     void SetUp() override {
         // Setup integer tensors
-        tensorInt1 = Tensor<int>({2, 2}, I32);
-        tensorInt2 = Tensor<int>({2, 2}, I32);
+        tensorInt1 = Tensor<int>({2, 2});
+        tensorInt2 = Tensor<int>({2, 2});
         tensorInt1[{0, 0}] = 10; tensorInt1[{0, 1}] = 20;
         tensorInt1[{1, 0}] = 30; tensorInt1[{1, 1}] = 40;
         tensorInt2[{0, 0}] = 5; tensorInt2[{0, 1}] = 6;
         tensorInt2[{1, 0}] = 7; tensorInt2[{1, 1}] = 8;
 
         // Setup floating point tensor
-        tensorFloat = Tensor<float>({2, 2}, FP32);
+        tensorFloat = Tensor<float>({2, 2});
         tensorFloat[{0, 0}] = 1.5f; tensorFloat[{0, 1}] = 2.5f;
         tensorFloat[{1, 0}] = 3.5f; tensorFloat[{1, 1}] = 4.5f;
 
         // Setup complex number tensors
-        tensorComplex1 = Tensor<std::complex<float>>({2, 2}, C32);
-        tensorComplex2 = Tensor<std::complex<float>>({2, 2}, C32);
+        tensorComplex1 = Tensor<std::complex<float>>({2, 2});
+        tensorComplex2 = Tensor<std::complex<float>>({2, 2});
         tensorComplex1[{0, 0}] = std::complex<float>(1.0f, 2.0f);
         tensorComplex1[{0, 1}] = std::complex<float>(3.0f, 4.0f);
         tensorComplex1[{1, 0}] = std::complex<float>(5.0f, 6.0f);
@@ -743,8 +845,8 @@ protected:
         tensorComplex2[{1, 1}] = std::complex<float>(2.0f, 2.0f);
 
         // Setup tensors for broadcasting test
-        tensorBroadcast1 = Tensor<int>({1, 3}, I32);
-        tensorBroadcast2 = Tensor<int>({3, 1}, I32);
+        tensorBroadcast1 = Tensor<int>({1, 3});
+        tensorBroadcast2 = Tensor<int>({3, 1});
         tensorBroadcast1[{0, 0}] = 2; tensorBroadcast1[{0, 1}] = 3; tensorBroadcast1[{0, 2}] = 4;
         tensorBroadcast2[{0, 0}] = 1; tensorBroadcast2[{1, 0}] = 2; tensorBroadcast2[{2, 0}] = 3;
     }
@@ -1006,8 +1108,83 @@ TEST_F(TensorOperationsTest, DivideTensorsBroadcast) {
     ASSERT_EQ(res22, 1);
 }
 
+// Scalar-Tensor Addition for Integer Tensors
+TEST_F(TensorOperationsTest, AddScalarTensorInteger) {
+    int scalar = 5;
+    Tensor<int> result = scalar + tensorInt1;
+    int res00 = result[{0, 0}];
+    int res01 = result[{0, 1}];
+    int res10 = result[{1, 0}];
+    int res11 = result[{1, 1}];
+    ASSERT_EQ(res00, 15);
+    ASSERT_EQ(res01, 25);
+    ASSERT_EQ(res10, 35);
+    ASSERT_EQ(res11, 45);
+}
+
+// Scalar-Tensor Subtraction for Integer Tensors
+TEST_F(TensorOperationsTest, SubtractScalarTensorInteger) {
+    int scalar = 50;
+    Tensor<int> result = scalar - tensorInt1;
+    int res00 = result[{0, 0}];
+    int res01 = result[{0, 1}];
+    int res10 = result[{1, 0}];
+    int res11 = result[{1, 1}];
+    ASSERT_EQ(res00, 40);
+    ASSERT_EQ(res01, 30);
+    ASSERT_EQ(res10, 20);
+    ASSERT_EQ(res11, 10);
+}
+
+// Scalar-Tensor Multiplication for Float Tensors
+TEST_F(TensorOperationsTest, MultiplyScalarTensorFloat) {
+    float scalar = 2.0f;
+    Tensor<float> result = scalar * tensorFloat;
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 3.0f, 0.001);
+    ASSERT_NEAR(res01, 5.0f, 0.001);
+    ASSERT_NEAR(res10, 7.0f, 0.001);
+    ASSERT_NEAR(res11, 9.0f, 0.001);
+}
+
+// Scalar-Tensor Division for Float Tensors
+TEST_F(TensorOperationsTest, DivideScalarTensorFloat) {
+    float scalar = 10.0f;
+    Tensor<float> result = scalar / tensorFloat;
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 10.0f / 1.5f, 0.001);
+    ASSERT_NEAR(res01, 10.0f / 2.5f, 0.001);
+    ASSERT_NEAR(res10, 10.0f / 3.5f, 0.001);
+    ASSERT_NEAR(res11, 10.0f / 4.5f, 0.001);
+}
+
+// Scalar-Tensor Division with Complex Numbers
+TEST_F(TensorOperationsTest, DivideScalarByComplex) {
+    std::complex<float> scalar = std::complex<float>(10.0, 0.0);
+    Tensor<std::complex<float>> result = scalar / tensorComplex1;
+    std::complex<float> res00 = result[{0, 0}];
+    std::complex<float> res01 = result[{0, 1}];
+    std::complex<float> res10 = result[{1, 0}];
+    std::complex<float> res11 = result[{1, 1}];
+    ASSERT_NEAR(res00.real(), 2.0, 1e-5);
+    ASSERT_NEAR(res00.imag(), -4.0, 1e-5);
+    ASSERT_NEAR(res01.real(), 1.2, 1e-5);
+    ASSERT_NEAR(res01.imag(), -1.6, 1e-5);
+    ASSERT_NEAR(res10.real(), 0.81967213, 1e-5);
+    ASSERT_NEAR(res10.imag(), -0.98360656, 1e-5);
+    ASSERT_NEAR(res11.real(), 0.61946903, 1e-5);
+    ASSERT_NEAR(res11.imag(), -0.7079646, 1e-5);
+}
+
+
 TEST_F(TensorOperationsTest, BinaryOperationsTensorShapeMismatch) {
-    Tensor<int> tensorMismatched({2, 3}, I32);
+    Tensor<int> tensorMismatched({2, 3});
     EXPECT_THROW(tensorInt1 - tensorMismatched, std::invalid_argument);
     EXPECT_THROW(tensorInt1 * tensorMismatched, std::invalid_argument);
     EXPECT_THROW(tensorInt1 / tensorMismatched, std::invalid_argument);
@@ -1020,12 +1197,12 @@ protected:
 
     void SetUp() override {
         // Setup floating-point tensor
-        tensorFloat = Tensor<float>({2, 2}, FP32);
+        tensorFloat = Tensor<float>({2, 2});
         tensorFloat[{0, 0}] = 1.0f; tensorFloat[{0, 1}] = 2.0f;
         tensorFloat[{1, 0}] = 3.0f; tensorFloat[{1, 1}] = 4.0f;
 
         // Setup complex tensor
-        tensorComplex = Tensor<std::complex<double>>({2, 2}, C64);
+        tensorComplex = Tensor<std::complex<double>>({2, 2});
         tensorComplex[{0, 0}] = std::complex<double>(1.0, 2.0);
         tensorComplex[{0, 1}] = std::complex<double>(3.0, 4.0);
         tensorComplex[{1, 0}] = std::complex<double>(5.0, 6.0);
@@ -1120,6 +1297,131 @@ TEST_F(TensorUnaryOperationsTest, LogComplex) {
     ASSERT_NEAR(res11.imag(), 0.85196633, 1e-6);
 }
 
+TEST_F(TensorUnaryOperationsTest, AbsFloat) {
+    Tensor<float> result = tensorFloat.abs();
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 1.0f, 1e-6f);
+    ASSERT_NEAR(res01, 2.0f, 1e-6f);
+    ASSERT_NEAR(res10, 3.0f, 1e-6f);
+    ASSERT_NEAR(res11, 4.0f, 1e-6f);
+}
+
+TEST_F(TensorUnaryOperationsTest, AbsComplex) {
+    Tensor<std::complex<double>> result = tensorComplex.abs();
+    double sqrt2 = std::sqrt(2.0);
+    std::complex<double> res00 = result[{0, 0}];
+    std::complex<double> res01 = result[{0, 1}];
+    std::complex<double> res10 = result[{1, 0}];
+    std::complex<double> res11 = result[{1, 1}];
+    ASSERT_NEAR(res00.real(), 2.23606797749979, 1e-6);
+    ASSERT_NEAR(res00.imag(), 0.0, 1e-6);
+    ASSERT_NEAR(res01.real(), 5.0, 1e-6);
+    ASSERT_NEAR(res01.imag(), 0.0, 1e-6);
+    ASSERT_NEAR(res10.real(), 7.810249675906654, 1e-6);
+    ASSERT_NEAR(res10.imag(), 0.0, 1e-6);
+    ASSERT_NEAR(res11.real(), 10.63014581273465, 1e-6);
+    ASSERT_NEAR(res11.imag(), 0.0, 1e-6);
+}
+
+TEST_F(TensorUnaryOperationsTest, ExpFloat) {
+    Tensor<float> result = tensorFloat.exp();
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 2.71828183f, 1e-6f);
+    ASSERT_NEAR(res01, 7.3890561f, 1e-6f);
+    ASSERT_NEAR(res10, 20.08553692f, 1e-6f);
+    ASSERT_NEAR(res11, 54.59815003f, 1e-6f);
+}
+
+TEST_F(TensorUnaryOperationsTest, ExpComplex) {
+    Tensor<std::complex<double>> result = tensorComplex.exp();
+    double res00_real = result[{0, 0}].real();
+    double res00_imag = result[{0, 0}].imag();
+    double res01_real = result[{0, 1}].real();
+    double res01_imag = result[{0, 1}].imag();
+    double res10_real = result[{1, 0}].real();
+    double res10_imag = result[{1, 0}].imag();
+    double res11_real = result[{1, 1}].real();
+    double res11_imag = result[{1, 1}].imag();
+    ASSERT_NEAR(res00_real, -1.13120438, 1e-6);
+    ASSERT_NEAR(res00_imag, 2.47172667, 1e-6);
+    ASSERT_NEAR(res01_real, -13.12878308, 1e-6);
+    ASSERT_NEAR(res01_imag, -15.20078446, 1e-6);
+    ASSERT_NEAR(res10_real, 142.50190552, 1e-6);
+    ASSERT_NEAR(res10_imag, -41.46893679, 1e-6);
+    ASSERT_NEAR(res11_real, -159.56016163, 1e-6);
+    ASSERT_NEAR(res11_imag, 1084.96305881, 1e-6);
+}
+
+TEST_F(TensorUnaryOperationsTest, SinFloat) {
+    Tensor<float> result = tensorFloat.sin();
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 0.84147098f, 1e-6f);
+    ASSERT_NEAR(res01, 0.90929743f, 1e-6f);
+    ASSERT_NEAR(res10, 0.14112001f, 1e-6f);
+    ASSERT_NEAR(res11, -0.7568025f, 1e-6f);
+}
+
+TEST_F(TensorUnaryOperationsTest, SinComplex) {
+    Tensor<std::complex<double>> result = tensorComplex.sin();
+    double res00_real = result[{0, 0}].real();
+    double res00_imag = result[{0, 0}].imag();
+    double res01_real = result[{0, 1}].real();
+    double res01_imag = result[{0, 1}].imag();
+    double res10_real = result[{1, 0}].real();
+    double res10_imag = result[{1, 0}].imag();
+    double res11_real = result[{1, 1}].real();
+    double res11_imag = result[{1, 1}].imag();
+    ASSERT_NEAR(res00_real, 3.16577851, 1e-6);
+    ASSERT_NEAR(res00_imag, 1.95960104, 1e-6);
+    ASSERT_NEAR(res01_real, 3.85373804, 1e-6);
+    ASSERT_NEAR(res01_imag, -27.01681326, 1e-6);
+    ASSERT_NEAR(res10_real, -193.43002006, 1e-6);
+    ASSERT_NEAR(res10_imag, 57.21839506, 1e-6);
+    ASSERT_NEAR(res11_real, 979.22483461, 1e-6);
+    ASSERT_NEAR(res11_imag, 1123.67534681, 1e-6);
+}
+
+TEST_F(TensorUnaryOperationsTest, CosFloat) {
+    Tensor<float> result = tensorFloat.cos();
+    float res00 = result[{0, 0}];
+    float res01 = result[{0, 1}];
+    float res10 = result[{1, 0}];
+    float res11 = result[{1, 1}];
+    ASSERT_NEAR(res00, 0.54030231f, 1e-6f);
+    ASSERT_NEAR(res01, -0.41614684f, 1e-6f);
+    ASSERT_NEAR(res10, -0.9899925f, 1e-6f);
+    ASSERT_NEAR(res11, -0.65364362f, 1e-6f);
+}
+
+TEST_F(TensorUnaryOperationsTest, CosComplex) {
+    Tensor<std::complex<double>> result = tensorComplex.cos();
+    double res00_real = result[{0, 0}].real();
+    double res00_imag = result[{0, 0}].imag();
+    double res01_real = result[{0, 1}].real();
+    double res01_imag = result[{0, 1}].imag();
+    double res10_real = result[{1, 0}].real();
+    double res10_imag = result[{1, 0}].imag();
+    double res11_real = result[{1, 1}].real();
+    double res11_imag = result[{1, 1}].imag();
+    ASSERT_NEAR(res00_real, 2.03272301, 1e-6);
+    ASSERT_NEAR(res00_imag, -3.0518978, 1e-6);
+    ASSERT_NEAR(res01_real, -27.0349456, 1e-6);
+    ASSERT_NEAR(res01_imag, -3.85115333, 1e-6);
+    ASSERT_NEAR(res10_real, 57.21909818, 1e-6);
+    ASSERT_NEAR(res10_imag, 193.42764312, 1e-6);
+    ASSERT_NEAR(res11_real, 1123.67559972, 1e-6);
+    ASSERT_NEAR(res11_imag, -979.22461422, 1e-6);
+}
+
 class TensorManipulationTests : public ::testing::Test {
 protected:
     Tensor<float> tensor3D;
@@ -1127,9 +1429,9 @@ protected:
     Tensor<float> tensor1D;
 
     void SetUp() override {
-        tensor3D = Tensor<float>({2, 3, 4}, FP32);
-        tensor2D = Tensor<float>({2, 3}, FP32);
-        tensor1D = Tensor<float>({2}, FP32);
+        tensor3D = Tensor<float>({2, 3, 4});
+        tensor2D = Tensor<float>({2, 3});
+        tensor1D = Tensor<float>({2});
     }
 };
 
@@ -1172,7 +1474,7 @@ TEST_F(TensorManipulationTests, ReshapeInvalid) {
 }
 
 TEST_F(TensorManipulationTests, SqueezeValid) {
-    tensor3D = Tensor<float>({2, 1, 3}, FP32);
+    tensor3D = Tensor<float>({2, 1, 3});
     Tensor<float> squeezed = tensor3D.squeeze(1);
     EXPECT_EQ(squeezed.getShape().size(), 2);
 }
