@@ -12,8 +12,6 @@ Tensor<T> window(const Tensor<T>& signal, const std::string& window_type = "hann
      * 
      * Currently only supports the Hann window function
      * 
-     * Currently only supports 1D signals
-     * 
      * @param signal: Input signal
      * @param window_type: Type of window function (e.g., "hann", "hamming")
      * @return: Windowed signal
@@ -32,8 +30,6 @@ Tensor<T> fft(Tensor<T>& signal) {
     /**
      * Computes the Fast Fourier Transform (FFT) of the input signal
      * 
-     * Currently only supports 1D signals
-     *
      * @param signal: Input signal
      * @return: FFT of the input signal
      * 
@@ -52,6 +48,8 @@ Tensor<T> fft(Tensor<T>& signal) {
 
     Tensor<std::complex<double>> even = signal[Slice(0, size, 2)];
     Tensor<std::complex<double>> odd = signal[Slice(1, size, 2)];
+    even = fft(even);
+    odd = fft(odd);
 
     for (int i = 0; i < size / 2; i++) {
         result[{i}] = even[{i}] + omega_n * odd[{i}];

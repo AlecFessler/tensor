@@ -8,11 +8,18 @@
 #include <functional>
 #include <iostream>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include <cnpy.h>
 
 #include "tensorStorage.h"
+
+template<typename T>
+struct is_complex : std::false_type {};
+
+template<typename T>
+struct is_complex<std::complex<T>> : std::true_type {};
 
 enum d_type {
     I32, // 32-bit integer
@@ -36,6 +43,8 @@ struct Slice {
 
     // Constructor for specifying start and stop, with step defaulting to 1
     Slice(int start, int stop) : start(start), stop(stop) {}
+
+    Slice(int start) : start(start) {}
 
     // Static factory methods for common slice operations
     static Slice toEnd(int start = 0, int step = 1) { return Slice(start, std::numeric_limits<int>::max(), step); }
@@ -258,6 +267,10 @@ public:
         /**
          * Convert the tensor to a new data type
          * 
+         * This method handles conversions between real and complex types:
+         * - From real to complex: Real part is set as the real number, imaginary part is set to zero.
+         * - From complex to real: The output is the magnitude of the complex number.
+         * 
          * @return: Tensor object with the new data type
          */
         Tensor<U> result(shape);
@@ -265,16 +278,27 @@ public:
         auto src_it = begin();
         auto dst_it = result.begin();
 
-        while (src_it != end()) {
-            if constexpr (std::is_same_v<T, std::complex<double>> && std::is_same_v<U, float>) {
-                *dst_it = static_cast<U>(std::abs(*src_it));
-            } else if constexpr (std::is_same_v<T, std::complex<float>> && std::is_same_v<U, float>) {
-                *dst_it = static_cast<U>(std::abs(*src_it));
-            } else {
-                *dst_it = static_cast<U>(*src_it);
+        if constexpr (is_complex<U>::value && !is_complex<T>::value) {
+            // Converting from real to complex
+            while (src_it != end()) {
+                *dst_it = U(*src_it, 0);  // Convert real to complex with zero imaginary part
+                ++src_it;
+                ++dst_it;
             }
-            ++src_it;
-            ++dst_it;
+        } else if constexpr (!is_complex<U>::value && is_complex<T>::value) {
+            // Converting from complex to real (using the magnitude of the complex number)
+            while (src_it != end()) {
+                *dst_it = static_cast<U>(std::abs(*src_it)); // Use std::abs to get the magnitude
+                ++src_it;
+                ++dst_it;
+            }
+        } else {
+            // Handling other generic conversions (including real to real and complex to complex)
+            while (src_it != end()) {
+                *dst_it = static_cast<U>(*src_it);
+                ++src_it;
+                ++dst_it;
+            }
         }
 
         return result;
@@ -371,15 +395,22 @@ public:
         }
 
         TensorIterator& operator++() {
-            for (int i = tensor_.shape.size() - 1; i >= 0; --i) {
-                if (++index_[i] < tensor_.shape[i]) {
-                    offset_ += tensor_.strides[i];
-                    return *this;
+            int n = tensor_.shape.size();
+            for (int i = n - 1; i >= 0; --i) {
+                index_[i]++;
+                if (index_[i] < tensor_.shape[i]) {
+                    break;
                 }
-                index_[i] = 0;
-                offset_ -= tensor_.strides[i] * (tensor_.shape[i] - 1);
+                if (i > 0) {
+                    index_[i] = 0;
+                }
             }
-            offset_ = tensor_.data.getSize();
+
+            offset_ = 0;
+            for (int i = 0; i < n; ++i) {
+                offset_ += index_[i] * tensor_.strides[i];
+            }
+
             return *this;
         }
 
@@ -432,15 +463,22 @@ public:
         }
 
         ConstTensorIterator& operator++() {
-            for (int i = tensor_.shape.size() - 1; i >= 0; --i) {
-                if (++index_[i] < tensor_.shape[i]) {
-                    offset_ += tensor_.strides[i];
-                    return *this;
+            int n = tensor_.shape.size();
+            for (int i = n - 1; i >= 0; --i) {
+                index_[i]++;
+                if (index_[i] < tensor_.shape[i]) {
+                    break;
                 }
-                index_[i] = 0;
-                offset_ -= tensor_.strides[i] * (tensor_.shape[i] - 1);
+                if (i > 0) {
+                    index_[i] = 0;
+                }
             }
-            offset_ = tensor_.data.getSize();
+
+            offset_ = 0;
+            for (int i = 0; i < n; ++i) {
+                offset_ += index_[i] * tensor_.strides[i];
+            }
+
             return *this;
         }
 
@@ -753,8 +791,9 @@ public:
 
         // Adjust strides
         result.strides = strides; // Copy the existing strides
-        result.strides[axis] = hopLength; // Set stride at the framing axis to hopLength
-        result.strides.push_back(1);
+        int previous_stride = strides[axis];
+        result.strides[axis] = hopLength * previous_stride; // Update the stride for the frame axis
+        result.strides.push_back(previous_stride); // Add a new stride for the frame axis
 
         if (!(frameSize == hopLength)) {
             result.contiguousFlag = false; // If frameSize is not equal to hopLength, set isContiguous to false
@@ -1127,6 +1166,17 @@ public:
         return unaryOperation(*this, [](const T& value) { return std::cos(value); });
     }
 
+    T mean() const {
+        /**
+         * Mean of all elements in the tensor
+         * 
+         * @return: Mean of the tensor elements
+         * 
+         * TODO: write unit tests for this method
+        */
+        return std::accumulate(begin(), end(), T{}) / static_cast<T>(size());
+    }
+
     Tensor<T> permute(std::initializer_list<int> order) const {
         /**
          * Alternative method to call permute with an initializer list
@@ -1322,8 +1372,9 @@ public:
 
         // Use iterator to copy data in logical order
         auto it = begin();
-        for (size_t i = 0; i < this->data.getSize(); ++i, ++it) {
-            result.data[i] = *it;
+        for (auto& value : result) {
+            value = *it;
+            ++it;
         }
         return result;
     }
@@ -1501,6 +1552,49 @@ public:
          */
         return full(std::vector<int>(shape.begin(), shape.end()), value);
     }
+
+    static Tensor<T> sinusoid(std::vector<int> shape, T frequency = 1, T phase = 0, T amplitude = 1) {
+        /**
+         * Create a tensor of a specified shape filled with a sinusoidal wave
+         * 
+         * @TODO: Write unit tests for this method
+         * 
+         * @param shape: Shape of the tensor
+         * @param frequency: Frequency of the sinusoidal wave
+         * @param phase: Phase of the sinusoidal wave
+         * @param amplitude: Amplitude of the sinusoidal wave
+         * @return: Tensor filled with a sinusoidal wave
+         */
+        Tensor<T> result(shape);
+        std::vector<int> idx(shape.size(), 0);
+        int totalSize = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
+        for (auto it = result.begin(); it != result.end(); ++it) {
+            T x = T(2 * M_PI) * frequency * T(std::inner_product(idx.begin(), idx.end(), result.strides.begin(), 0)) / T(totalSize) + phase;
+            *it = amplitude * std::sin(x);
+            for (int i = 0; i < shape.size(); ++i) {
+                idx[i] += 1;
+                if (idx[i] < shape[i]) {
+                    break;
+                }
+                idx[i] = 0;
+            }
+        }
+        return result;
+    }
+
+    static Tensor<T> sinusoid(std::initializer_list<int> shape, T frequency = 1, T phase = 0, T amplitude = 1) {
+        /**
+         * Alternative method to call sinusoid with an initializer list
+         * 
+         * @param shape: Shape of the tensor
+         * @param frequency: Frequency of the sinusoidal wave
+         * @param phase: Phase of the sinusoidal wave
+         * @param amplitude: Amplitude of the sinusoidal wave
+         * @return: Tensor filled with a sinusoidal wave
+         */
+        return sinusoid(std::vector<int>(shape.begin(), shape.end()), frequency, phase, amplitude);
+    }
+
 };
 
 #endif // TENSOR_H

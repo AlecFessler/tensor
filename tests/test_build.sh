@@ -1,3 +1,3 @@
 #!/bin/bash
 
-g++ -o test tensorTests.cpp -lgtest -lpthread -lcnpy
+g++ -o tensorUnitTests tensorTests.cpp -lgtest -lpthread -lcnpy

@@ -1,7 +1,7 @@
 #include <complex>
 
 #include <gtest/gtest.h>
-#include "tensor.h"
+#include "../tensor.h"
 
 class TensorTest : public ::testing::Test {};
 
@@ -327,6 +327,22 @@ TEST_F(TensorSlicingTest, SingleElementSlice) {
     ASSERT_EQ(firstElement, 11);
     ASSERT_EQ(lastElement, 15);
     ASSERT_EQ(numElements, 5);
+}
+
+// Test complete verification of an odd-index slice in a 1D Tensor
+TEST_F(TensorSlicingTest, CompleteOddIndexSlice) {
+    Tensor<int> tensor1D({10});  // 1D tensor with 10 elements
+    for (int i = 0; i < 10; ++i) {
+        tensor1D[{i}] = i;  // Fill with values 0 to 9
+    }
+
+    Tensor<int> sliced = tensor1D[Slice(1, 10, 2)]; // Slice to get odd indices
+    std::vector<int> expected = {1, 3, 5, 7, 9};  // Expected values
+    ASSERT_EQ(sliced.size(), expected.size());  // Check size first
+
+    for (int i = 0; i < expected.size(); ++i) {
+        ASSERT_EQ(sliced[{i}], expected[i]) << "Mismatch at index " << i;
+    }
 }
 
 TEST_F(TensorSlicingTest, OutOfRangeSlice) {
