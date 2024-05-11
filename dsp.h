@@ -60,4 +60,37 @@ Tensor<T> fft(Tensor<T>& signal) {
     return result;
 }
 
+template <typename T>
+Tensor<T> asrPreprocessor(Tensor<T> signal, Tensor<T> filter_banks, int stride=160, int n_fft=512, int padding=256) {
+
+    Tensor<T> first_elem = signal[Slice(0, 1)];
+    signal = first_elem.concat(signal[Slice(1)] - 0.97 * signal[Slice(0, signal.size() - 1)], 0);
+    signal = signal.pad({padding, padding}, 0);
+    signal = signal.frame(n_fft, stride, 0).contiguous(); // make contiguous after framing
+
+    Tensor<double> window_factor = window(Tensor<double>::full({n_fft}, 1.0), "hann");
+    Tensor<double> windowed_signal = signal.astype<double>() * window_factor; // cast to double before windowing
+
+    Tensor<std::complex<double>> complex_signal = windowed_signal.template astype<std::complex<double>>();
+    Tensor<std::complex<double>> spectrogram;
+    Tensor<std::complex<double>> frame;
+    Tensor<std::complex<double>> fft_result;
+
+    for (int i = 0; i < complex_signal.size(); i++) {
+        frame = complex_signal[Slice(i, i + 1)].squeeze(0);
+        fft_result = fft(frame);
+        if (i == 0) {
+            spectrogram = fft_result[Slice(0, n_fft / 2 + 1)].unsqueeze(0);
+        } else {
+            spectrogram = spectrogram.concat(fft_result[Slice(0, n_fft / 2 + 1)].unsqueeze(0), 0);
+        }
+    }
+
+    Tensor<T> power_spectrum = spectrogram.abs().pow(2).astype<T>(); // casted to T
+    Tensor<T> mel_spectrogram = power_spectrum.matmul(filter_banks);
+    mel_spectrogram = (mel_spectrogram + 1e-6).log().transpose().contiguous().unsqueeze(0);
+
+    return mel_spectrogram;
+}
+
 #endif // DSP_H
